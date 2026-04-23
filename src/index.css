@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Technology';
+  src: url('/fonts/Technology.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 body {
   margin: 0;
+  background-color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-digital {
+  font-family: 'Technology', monospace;
+}
+
+.text-emerald-400 {
+  text-shadow: 0 0 15px rgba(52, 211, 153, 0.4);
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
 }

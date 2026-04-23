@@ -1,22 +1,22 @@
 const CACHE_NAME = 'bounce-parking-v1';
- 
+
 // Install service worker
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
- 
+
 // Activate service worker
 self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
 });
- 
+
 // Handle messages from the app
 self.addEventListener('message', (event) => {
   const { type, payload } = event.data;
- 
+
   if (type === 'SCHEDULE_NOTIFICATION') {
     const { walkBackMs, endMs } = payload;
- 
+
     // Schedule walk-back notification
     if (walkBackMs > 0) {
       setTimeout(() => {
@@ -30,7 +30,7 @@ self.addEventListener('message', (event) => {
         });
       }, walkBackMs);
     }
- 
+
     // Schedule expired notification
     const expiredMs = endMs - Date.now();
     if (expiredMs > 0) {
@@ -46,14 +46,14 @@ self.addEventListener('message', (event) => {
       }, expiredMs);
     }
   }
- 
+
   if (type === 'CANCEL_NOTIFICATIONS') {
     self.registration.getNotifications().then((notifications) => {
       notifications.forEach((n) => n.close());
     });
   }
 });
- 
+
 // Handle notification click — open the app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

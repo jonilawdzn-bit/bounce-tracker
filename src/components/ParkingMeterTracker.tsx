@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Minus, Navigation, Clock, AlertTriangle, MapPin } from 'lucide-react';
 
-const WALK_SPEED_MPS = 1.4; // avg walking speed ~1.4 m/s
-const TEST_WALK_BUFFER_SECONDS = 120; // 2 min fallback for testing when you haven't moved
+const WALK_SPEED_MPS = 1.4;
+const TEST_WALK_BUFFER_SECONDS = 120;
 
 function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -25,10 +25,53 @@ const ParkingMeterTracker = () => {
   const [hasEnded, setHasEnded] = useState(false);
   const [showFindCar, setShowFindCar] = useState(false);
   const [walkBackSeconds, setWalkBackSeconds] = useState(TEST_WALK_BUFFER_SECONDS);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+  const [swReady, setSwReady] = useState(false);
 
-  const endTimeRef = useRef<number | null>(null); // timestamp when timer should end
+  const endTimeRef = useRef<number | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const swRef = useRef<ServiceWorkerRegistration | null>(null);
 
-  // ─── FIX 1: Background-safe timer using end timestamp ───────────────────────
+  // Register service worker
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        swRef.current = reg;
+        setSwReady(true);
+      }).catch(console.error);
+    }
+    if ('Notification' in window) {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotifPermission = async () => {
+    if ('Notification' in window) {
+      const result = await Notification.requestPermission();
+      setNotifPermission(result);
+      return result === 'granted';
+    }
+    return false;
+  };
+
+  const scheduleNotifications = useCallback((endMs: number, walkBackMs: number) => {
+    const sw = swRef.current?.active || swRef.current?.installing || swRef.current?.waiting;
+    if (sw) {
+      sw.postMessage({
+        type: 'SCHEDULE_NOTIFICATION',
+        payload: { endMs, walkBackMs }
+      });
+    }
+  }, []);
+
+  const cancelNotifications = useCallback(() => {
+    const sw = swRef.current?.active;
+    if (sw) {
+      sw.postMessage({ type: 'CANCEL_NOTIFICATIONS' });
+    }
+  }, []);
+
+  // Background-safe timer using end timestamp
   useEffect(() => {
     if (!isActive) return;
 
@@ -37,7 +80,6 @@ const ParkingMeterTracker = () => {
       const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
       setTimeLeft(remaining);
 
-      // ─── FIX 3: Show "Find My Car" when walk-back time is reached ───────────
       if (remaining <= walkBackSeconds && remaining > 0) {
         setShowFindCar(true);
       }
@@ -49,22 +91,20 @@ const ParkingMeterTracker = () => {
       }
     };
 
-    tick(); // run immediately on mount
+    tick();
     const interval = window.setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [isActive, walkBackSeconds]);
 
-  // ─── FIX 2: Mobile back button interception ──────────────────────────────────
+  // Mobile back button interception
   useEffect(() => {
     if (isActive) {
-      // Push a state so pressing back triggers popstate instead of leaving
       window.history.pushState({ meter: true }, '');
     }
 
     const handlePopState = () => {
       if (isActive) {
         setShowExitWarning(true);
-        // Re-push state so back button keeps working
         window.history.pushState({ meter: true }, '');
       }
     };
@@ -73,7 +113,7 @@ const ParkingMeterTracker = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isActive]);
 
-  // Desktop exit warning (still useful on desktop/PWA)
+  // Desktop exit warning
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isActive) {
@@ -85,9 +125,6 @@ const ParkingMeterTracker = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isActive]);
 
-  // ─── Watch current position while timer is active to calc walk-back time ────
-  const watchIdRef = useRef<number | null>(null);
-
   const startWatchingPosition = useCallback((pinned: { lat: number; lng: number }) => {
     if (!('geolocation' in navigator)) return;
 
@@ -97,7 +134,6 @@ const ParkingMeterTracker = () => {
           pinned.lat, pinned.lng,
           pos.coords.latitude, pos.coords.longitude
         );
-        // FIX 4: If distance is tiny (testing in place), use fallback buffer
         const rawSeconds = Math.ceil(dist / WALK_SPEED_MPS);
         setWalkBackSeconds(Math.max(rawSeconds, TEST_WALK_BUFFER_SECONDS));
       },
@@ -117,14 +153,22 @@ const ParkingMeterTracker = () => {
     if (!isActive) stopWatchingPosition();
   }, [isActive, stopWatchingPosition]);
 
-  const startTimer = () => {
+  const startTimer = async () => {
+    if (notifPermission !== 'granted') {
+      await requestNotifPermission();
+    }
+
     const durationSeconds = duration * 60;
-    endTimeRef.current = Date.now() + durationSeconds * 1000;
+    const endMs = Date.now() + durationSeconds * 1000;
+    endTimeRef.current = endMs;
     setTimeLeft(durationSeconds);
     setIsActive(true);
     setHasEnded(false);
     setShowFindCar(false);
     setWalkBackSeconds(TEST_WALK_BUFFER_SECONDS);
+
+    const walkBackMs = Math.max(0, durationSeconds * 1000 - TEST_WALK_BUFFER_SECONDS * 1000);
+    if (swReady) scheduleNotifications(endMs, walkBackMs);
 
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -146,6 +190,7 @@ const ParkingMeterTracker = () => {
     setShowFindCar(false);
     endTimeRef.current = null;
     stopWatchingPosition();
+    cancelNotifications();
   };
 
   const formatTime = (seconds: number) => {
@@ -222,8 +267,6 @@ const ParkingMeterTracker = () => {
         {/* INTERFACE */}
         {!isActive ? (
           <div className="space-y-6">
-
-            {/* Find My Car — shows when walk-back time is reached OR after timer ends */}
             {(showFindCar || hasEnded) && pinnedCoords && (
               <button
                 onClick={handleFindCar}
@@ -253,11 +296,15 @@ const ParkingMeterTracker = () => {
             >
               {hasEnded ? 'RESTART METER' : 'START METER'}
             </button>
+
+            {notifPermission === 'denied' && (
+              <p className="text-center text-xs text-red-400">
+                Notifications blocked — enable them in your phone settings for walk-back alerts.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4 text-center">
-
-            {/* Find My Car — shows DURING active timer when it's time to walk back */}
             {showFindCar && pinnedCoords && (
               <button
                 onClick={handleFindCar}
@@ -287,7 +334,6 @@ const ParkingMeterTracker = () => {
               </div>
             )}
 
-            {/* Walk-back info (helpful for testing) */}
             <div className="text-[10px] text-slate-600 uppercase tracking-widest">
               Walk-back buffer: {Math.ceil(walkBackSeconds / 60)} min
             </div>

@@ -16,7 +16,6 @@ function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Send message to service worker safely
 function postToSW(msg: object) {
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage(msg);
@@ -32,32 +31,23 @@ const ParkingMeterTracker = () => {
   const [hasEnded, setHasEnded] = useState(false);
   const [showFindCar, setShowFindCar] = useState(false);
   const [walkBackSeconds, setWalkBackSeconds] = useState(TEST_WALK_BUFFER_SECONDS);
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
   const endTimeRef = useRef<number | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const lastPinnedRef = useRef<{ lat: number; lng: number } | null>(null);
+  const hasEndedRef = useRef(false);
 
-  // Register service worker once on mount
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(console.error);
     }
-    if ('Notification' in window) {
-      setNotifPermission(Notification.permission);
+    // Request notification permission on load
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
     }
   }, []);
 
-  const requestNotifPermission = async (): Promise<boolean> => {
-    if ('Notification' in window) {
-      const result = await Notification.requestPermission();
-      setNotifPermission(result);
-      return result === 'granted';
-    }
-    return false;
-  };
-
-  // Background-safe timer using end timestamp
+  // Background-safe timer
   useEffect(() => {
     if (!isActive) return;
 
@@ -66,16 +56,15 @@ const ParkingMeterTracker = () => {
       const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
       setTimeLeft(remaining);
 
-      // Show Find My Car when walk-back time reached OR red zone (under 5 min)
       if ((remaining <= walkBackSeconds || remaining <= 300) && remaining > 0) {
         setShowFindCar(true);
       }
 
-      if (remaining === 0) {
+      if (remaining === 0 && !hasEndedRef.current) {
+        hasEndedRef.current = true;
         setIsActive(false);
         setHasEnded(true);
         setShowFindCar(true);
-        // Vibrate on expiry if supported
         if ('vibrate' in navigator) navigator.vibrate([300, 100, 300, 100, 300]);
       }
     };
@@ -85,11 +74,9 @@ const ParkingMeterTracker = () => {
     return () => clearInterval(interval);
   }, [isActive, walkBackSeconds]);
 
-  // Mobile back button interception
+  // Mobile back button
   useEffect(() => {
-    if (isActive) {
-      window.history.pushState({ meter: true }, '');
-    }
+    if (isActive) window.history.pushState({ meter: true }, '');
     const handlePopState = () => {
       if (isActive) {
         setShowExitWarning(true);
@@ -100,7 +87,6 @@ const ParkingMeterTracker = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isActive]);
 
-  // Desktop exit warning
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isActive) { e.preventDefault(); e.returnValue = ''; }
@@ -109,15 +95,11 @@ const ParkingMeterTracker = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isActive]);
 
-  // Watch GPS position while active
   const startWatchingPosition = useCallback((pinned: { lat: number; lng: number }) => {
     if (!('geolocation' in navigator)) return;
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const dist = getDistanceMeters(
-          pinned.lat, pinned.lng,
-          pos.coords.latitude, pos.coords.longitude
-        );
+        const dist = getDistanceMeters(pinned.lat, pinned.lng, pos.coords.latitude, pos.coords.longitude);
         const rawSeconds = Math.ceil(dist / WALK_SPEED_MPS);
         setWalkBackSeconds(Math.max(rawSeconds, TEST_WALK_BUFFER_SECONDS));
       },
@@ -137,28 +119,22 @@ const ParkingMeterTracker = () => {
     if (!isActive) stopWatchingPosition();
   }, [isActive, stopWatchingPosition]);
 
-  const startTimer = async () => {
-    // Request notification permission if not granted
-    if (notifPermission !== 'granted') {
-      await requestNotifPermission();
-    }
-
+  const startTimer = () => {
     const durationSeconds = duration * 60;
     const endMs = Date.now() + durationSeconds * 1000;
     endTimeRef.current = endMs;
+    hasEndedRef.current = false;
 
     setTimeLeft(durationSeconds);
     setIsActive(true);
     setHasEnded(false);
     setShowFindCar(false);
     setWalkBackSeconds(TEST_WALK_BUFFER_SECONDS);
-    // Keep last pinned coords visible until new ones come in
-    setPinnedCoords(lastPinnedRef.current);
+    // Show last known coords immediately while GPS refreshes
+    if (lastPinnedRef.current) setPinnedCoords(lastPinnedRef.current);
 
-    // Schedule push notifications via service worker
     postToSW({ type: 'SCHEDULE_NOTIFICATION', payload: { endMs } });
 
-    // Get current GPS position
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (p) => {
@@ -179,6 +155,7 @@ const ParkingMeterTracker = () => {
     setTimeLeft(0);
     setShowFindCar(false);
     endTimeRef.current = null;
+    hasEndedRef.current = false;
     stopWatchingPosition();
     postToSW({ type: 'CANCEL_NOTIFICATIONS' });
   };
@@ -191,8 +168,7 @@ const ParkingMeterTracker = () => {
 
   const handleFindCar = () => {
     if (pinnedCoords) {
-      const url = `https://www.google.com/maps/search/?api=1&query=${pinnedCoords.lat},${pinnedCoords.lng}`;
-      window.open(url, '_blank');
+      window.open(`https://www.google.com/maps/search/?api=1&query=${pinnedCoords.lat},${pinnedCoords.lng}`, '_blank');
     }
   };
 
@@ -201,7 +177,6 @@ const ParkingMeterTracker = () => {
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen bg-[#0f172a] p-6 text-white overflow-hidden">
 
-      {/* EXIT WARNING OVERLAY */}
       {showExitWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
           <div className="w-full max-w-xs bg-slate-900 border-2 border-red-500/50 rounded-[2.5rem] p-8 text-center shadow-[0_0_40px_rgba(239,68,68,0.2)]">
@@ -209,20 +184,12 @@ const ParkingMeterTracker = () => {
               <AlertTriangle size={32} />
             </div>
             <h2 className="text-2xl font-black mb-2 uppercase tracking-tight">Stop Meter?</h2>
-            <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-              Closing the session will lose your pinned location.
-            </p>
+            <p className="text-slate-400 text-sm mb-8 leading-relaxed">Closing the session will lose your pinned location.</p>
             <div className="space-y-3">
-              <button
-                onClick={cancelTimer}
-                className="w-full py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black uppercase tracking-widest transition-colors"
-              >
+              <button onClick={cancelTimer} className="w-full py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black uppercase tracking-widest transition-colors">
                 End Session
               </button>
-              <button
-                onClick={() => setShowExitWarning(false)}
-                className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-bold transition-colors"
-              >
+              <button onClick={() => setShowExitWarning(false)} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-bold transition-colors">
                 Keep Running
               </button>
             </div>
@@ -230,93 +197,56 @@ const ParkingMeterTracker = () => {
         </div>
       )}
 
-      {/* LOGO */}
       <img src="/bounce-logo-wht.png" alt="Bounce" className="h-[50px] mb-10" />
 
-      {/* MAIN CARD */}
       <div className="w-full max-w-sm bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl border border-slate-700">
 
-        {/* DISPLAY */}
         <div className="py-8 mb-8 text-center overflow-hidden">
           <div
-            className={`text-7xl font-digital tracking-widest leading-none ${
-              isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'
-            }`}
+            className={`text-7xl font-digital tracking-widest leading-none ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}
             style={{ textShadow: '0 0 12px currentColor' }}
           >
             {formatTime(timeLeft)}
           </div>
           <div className="flex items-center justify-center gap-2 mt-6 text-slate-500 uppercase text-[10px] font-bold tracking-[0.4em]">
             <Clock size={12} className={isActive ? 'animate-spin-slow' : ''} />
-            <span>
-              {isActive ? 'Tracking Active' : hasEnded ? 'Time Expired' : 'Ready to Pin'}
-            </span>
+            <span>{isActive ? 'Tracking Active' : hasEnded ? 'Time Expired' : 'Ready to Pin'}</span>
           </div>
         </div>
 
-        {/* INTERFACE — inactive state */}
         {!isActive ? (
           <div className="space-y-6">
-
-            {/* Find My Car — shows after timer ends */}
-            {(showFindCar || hasEnded) && pinnedCoords && (
-              <button
-                onClick={handleFindCar}
-                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3"
-              >
+            {hasEnded && pinnedCoords && (
+              <button onClick={handleFindCar} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3">
                 <MapPin size={24} />
                 FIND MY CAR
               </button>
             )}
 
-            {/* Duration picker */}
             <div className="flex items-center justify-between bg-slate-900/50 rounded-2xl p-4 border border-slate-700/50">
-              <button onClick={() => setDuration(Math.max(1, duration - 5))} className="p-2 text-slate-400 hover:text-white">
-                <Minus size={24} />
-              </button>
+              <button onClick={() => setDuration(Math.max(1, duration - 5))} className="p-2 text-slate-400 hover:text-white"><Minus size={24} /></button>
               <div className="text-center leading-none">
                 <span className="text-4xl font-bold">{duration}</span>
                 <p className="text-[10px] text-slate-500 uppercase mt-1 font-bold">Min</p>
               </div>
-              <button onClick={() => setDuration(duration + 5)} className="p-2 text-slate-400 hover:text-white">
-                <Plus size={24} />
-              </button>
+              <button onClick={() => setDuration(duration + 5)} className="p-2 text-slate-400 hover:text-white"><Plus size={24} /></button>
             </div>
 
-            {/* Start / Restart */}
-            <button
-              onClick={startTimer}
-              className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-xl shadow-lg transition-transform active:scale-95"
-            >
+            <button onClick={startTimer} className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-xl shadow-lg transition-transform active:scale-95">
               {hasEnded ? 'RESTART METER' : 'START METER'}
             </button>
-
-            {notifPermission === 'denied' && (
-              <p className="text-center text-xs text-red-400">
-                Notifications blocked — enable them in your phone settings for alerts.
-              </p>
-            )}
           </div>
 
         ) : (
-          /* INTERFACE — active state */
           <div className="space-y-4 text-center">
-
-            {/* Find My Car — shows during active timer when walk-back time reached */}
             {showFindCar && pinnedCoords && (
-              <button
-                onClick={handleFindCar}
-                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3"
-              >
+              <button onClick={handleFindCar} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3">
                 <MapPin size={24} />
                 TIME TO HEAD BACK
               </button>
             )}
 
-            <button
-              onClick={() => setShowExitWarning(true)}
-              className="w-full py-5 bg-slate-900 text-red-500 border border-red-900/20 rounded-2xl font-black text-xl hover:bg-red-950/20 transition-all"
-            >
+            <button onClick={() => setShowExitWarning(true)} className="w-full py-5 bg-slate-900 text-red-500 border border-red-900/20 rounded-2xl font-black text-xl hover:bg-red-950/20 transition-all">
               CANCEL
             </button>
 
@@ -325,9 +255,7 @@ const ParkingMeterTracker = () => {
                 <Navigation size={16} className="text-emerald-500 fill-emerald-500/10" />
                 <div className="text-left">
                   <p className="text-[10px] text-slate-500 uppercase font-bold leading-none">Location Pinned</p>
-                  <p className="text-xs text-slate-300 font-mono mt-1">
-                    {pinnedCoords.lat.toFixed(4)}, {pinnedCoords.lng.toFixed(4)}
-                  </p>
+                  <p className="text-xs text-slate-300 font-mono mt-1">{pinnedCoords.lat.toFixed(4)}, {pinnedCoords.lng.toFixed(4)}</p>
                 </div>
               </div>
             )}

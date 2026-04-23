@@ -80,7 +80,7 @@ const ParkingMeterTracker = () => {
       const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
       setTimeLeft(remaining);
 
-      if (remaining <= walkBackSeconds && remaining > 0) {
+      if ((remaining <= walkBackSeconds || remaining <= 300) && remaining > 0) {
         setShowFindCar(true);
       }
 

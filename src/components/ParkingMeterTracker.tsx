@@ -164,6 +164,7 @@ const ParkingMeterTracker = () => {
     setTimeLeft(durationSeconds);
     setIsActive(true);
     setHasEnded(false);
+    setPinnedCoords(null);
     setShowFindCar(false);
     setWalkBackSeconds(TEST_WALK_BUFFER_SECONDS);
 

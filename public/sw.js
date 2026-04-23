@@ -1,24 +1,23 @@
 const CACHE_NAME = 'bounce-parking-v1';
 
-// Install service worker
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate service worker
 self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
 });
 
-// Handle messages from the app
 self.addEventListener('message', (event) => {
   const { type, payload } = event.data;
 
   if (type === 'SCHEDULE_NOTIFICATION') {
-    const { walkBackMs, endMs } = payload;
+    const { endMs } = payload;
+    const now = Date.now();
+    const totalMs = endMs - now;
 
-    // Schedule walk-back notification
-    if (walkBackMs > 0) {
+    const headBackMs = totalMs - (10 * 60 * 1000);
+    if (headBackMs > 0) {
       setTimeout(() => {
         self.registration.showNotification('🚶 Time to Head Back!', {
           body: 'Start walking back to your car now.',
@@ -28,12 +27,24 @@ self.addEventListener('message', (event) => {
           requireInteraction: true,
           vibrate: [200, 100, 200]
         });
-      }, walkBackMs);
+      }, headBackMs);
     }
 
-    // Schedule expired notification
-    const expiredMs = endMs - Date.now();
-    if (expiredMs > 0) {
+    const fiveMinMs = totalMs - (5 * 60 * 1000);
+    if (fiveMinMs > 0) {
+      setTimeout(() => {
+        self.registration.showtification('⚠️ 5 Minutes Left!', {
+          body: 'Your parkinger is almost up. Head back now!',
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: 'five-min',
+          requireInteraction: true,
+          vibrate: [200, 100, 200]
+        });
+      }, fiveMinMs);
+    }
+
+    if (totalMs > 0) {
       setTimeout(() => {
         self.registration.showNotification('⏰ Parking Meter Expired!', {
           body: 'Your parking meter has run out.',
@@ -43,7 +54,7 @@ self.addEventListener('message', (event) => {
           requireInteraction: true,
           vibrate: [300, 100, 300, 100, 300]
         });
-      }, expiredMs);
+      }, totalMs);
     }
   }
 
@@ -54,7 +65,6 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Handle notification click — open the app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(

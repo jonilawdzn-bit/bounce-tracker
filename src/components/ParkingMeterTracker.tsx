@@ -271,7 +271,7 @@ const ParkingMeterTracker = () => {
             {(showFindCar || hasEnded) && pinnedCoords && (
               <button
                 onClick={handleFindCar}
-                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3 animate-bounce"
+                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3"
               >
                 <MapPin size={24} />
                 FIND MY CAR
@@ -309,7 +309,7 @@ const ParkingMeterTracker = () => {
             {showFindCar && pinnedCoords && (
               <button
                 onClick={handleFindCar}
-                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3 animate-bounce"
+                className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3"
               >
                 <MapPin size={24} />
                 TIME TO HEAD BACK

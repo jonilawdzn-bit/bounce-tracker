@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Minus, Navigation, Clock, AlertTriangle, MapPin } from 'lucide-react';
+import { Plus, Minus, Navigation, Clock, AlertTriangle, MapPin, BellRing } from 'lucide-react';
 
 const WALK_SPEED_MPS = 1.4;
 const TEST_WALK_BUFFER_SECONDS = 120;
@@ -31,21 +31,74 @@ const ParkingMeterTracker = () => {
   const [hasEnded, setHasEnded] = useState(false);
   const [showFindCar, setShowFindCar] = useState(false);
   const [walkBackSeconds, setWalkBackSeconds] = useState(TEST_WALK_BUFFER_SECONDS);
+  const [missedAlert, setMissedAlert] = useState<string | null>(null);
 
   const endTimeRef = useRef<number | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const lastPinnedRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasEndedRef = useRef(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
+  // Register service worker
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(console.error);
     }
-    // Request notification permission on load
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
+
+  // WakeLock — keep screen on while timer is active
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      } catch (err) {
+        console.warn('WakeLock failed:', err);
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release();
+      wakeLockRef.current = null;
+    }
+  };
+
+  // Re-acquire WakeLock if released (e.g. tab becomes visible again)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isActive) {
+        requestWakeLock();
+
+        // Option 1: Check if we missed any alerts while away
+        if (endTimeRef.current !== null) {
+          const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
+
+          if (remaining === 0) {
+            setIsActive(false);
+            setHasEnded(true);
+            setowFindCar(true);
+            setMissedAlert('⏰ Your meter expired while you were away!');
+            if ('vibrate' in navigator) navigator.vibrate([300, 100, 300, 100, 300]);
+          } else if (remaining <= 300) {
+            setShowFindCar(true);
+            setMissedAlert('⚠️ Under 5 minutes left — head back now!');
+            if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+          } else if (remaining <= walkBackSeconds) {
+            setShowFindCar(true);
+            setMissedAlert('🚶 Time to start walking back to your car!');
+            if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isActive, walkBackSeconds]);
 
   // Background-safe timer
   useEffect(() => {
@@ -65,6 +118,7 @@ const ParkingMeterTracker = () => {
         setIsActive(false);
         setHasEnded(true);
         setShowFindCar(true);
+        releaseWakeLock();
         if ('vibrate' in navigator) navigator.vibrate([300, 100, 300, 100, 300]);
       }
     };
@@ -83,8 +137,7 @@ const ParkingMeterTracker = () => {
         window.history.pushState({ meter: true }, '');
       }
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handlePopStatturn () => window.removeEventListener('popstate', handlePopState);
   }, [isActive]);
 
   useEffect(() => {
@@ -129,10 +182,11 @@ const ParkingMeterTracker = () => {
     setIsActive(true);
     setHasEnded(false);
     setShowFindCar(false);
+    setMissedAlert(null);
     setWalkBackSeconds(TEST_WALK_BUFFER_SECONDS);
-    // Show last known coords immediately while GPS refreshes
     if (lastPinnedRef.current) setPinnedCoords(lastPinnedRef.current);
 
+    requestWakeLock();
     postToSW({ type: 'SCHEDULE_NOTIFICATION', payload: { endMs } });
 
     if ('geolocation' in navigator) {
@@ -154,8 +208,10 @@ const ParkingMeterTracker = () => {
     setShowExitWarning(false);
     setTimeLeft(0);
     setShowFindCar(false);
+    setMissedAlert(null);
     endTimeRef.current = null;
     hasEndedRef.current = false;
+    releaseWakeLock();
     stopWatchingPosition();
     postToSW({ type: 'CANCEL_NOTIFICATIONS' });
   };
@@ -177,6 +233,7 @@ const ParkingMeterTracker = () => {
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen bg-[#0f172a] p-6 text-white overflow-hidden">
 
+      {/* EXIT WARNING OVERLAY */}
       {showExitWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
           <div className="w-full max-w-xs bg-slate-900 border-2 border-red-500/50 rounded-[2.5rem] p-8 text-center shadow-[0_0_40px_rgba(239,68,68,0.2)]">
@@ -201,6 +258,16 @@ const ParkingMeterTracker = () => {
 
       <div className="w-full max-w-sm bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl border border-slate-700">
 
+        {/* MISSED ALERT BANNER */}
+        {missedAlert && (
+          <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-3">
+            <BellRing size={20} className="text-amber-400 shrink-0" />
+            <p className="text-amber-300 text-sm font-bold">{missedAlert}</p>
+            <button onClick={() => setMissedAlert(null)} className="ml-auto text-amber-500 text-lg leading-none">×</button>
+          </div>
+        )}
+
+        {/* DISPLAY */}
         <div className="py-8 mb-8 text-center overflow-hidden">
           <div
             className={`text-7xl font-digital tracking-widest leading-none ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}

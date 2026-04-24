@@ -185,7 +185,7 @@ const ParkingMeterTracker = () => {
           lastPinnedRef.current = pinned;
           startWatchingPosition(pinned);
         },
-        (e) => console.error('GPS error:', e),
+        (e) => { console.error('GPS error:', e); alert('GPS Error: ' + e.code + ' - ' + e.message); },
         { enableHighAccuracy: true }
       );
     }

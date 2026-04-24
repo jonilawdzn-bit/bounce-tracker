@@ -81,6 +81,7 @@ const ParkingMeterTracker = () => {
       const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
       setTimeLeft(remaining);
       if ((remaining <= walkBackSeconds || remaining <= 300) && remaining > 0) {
+        if (remaining === 300) { if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]); }
         setShowFindCar(true);
       }
       if (remaining === 0 && !hasEndedRef.current) {

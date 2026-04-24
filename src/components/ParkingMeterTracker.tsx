@@ -232,7 +232,7 @@ const ParkingMeterTracker = () => {
         {/* DISPLAY */}
         <div className="py-8 mb-8 text-center overflow-hidden">
           <div
-            className={`text-6xl font-digital tracking-widest leading-none ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}
+            className={`text-5xl font-digital tracking-widest leading-none ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}
             style={{ textShadow: '0 0 12px currentColor' }}
           >
             {formatTime(timeLeft)}

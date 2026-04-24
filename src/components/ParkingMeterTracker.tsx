@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Minus, Navigation, Clock, AlertTriangle, MapPin, BellRing } from 'lucide-react';
+import { Plus, Minus, Navigation, Clock, AlertTriangle, MapPin } from 'lucide-react';
 
 const WALK_SPEED_MPS = 1.4;
 const TEST_WALK_BUFFER_SECONDS = 120;
@@ -31,7 +31,6 @@ const ParkingMeterTracker = () => {
   const [hasEnded, setHasEnded] = useState(false);
   const [showFindCar, setShowFindCar] = useState(false);
   const [walkBackSeconds, setWalkBackSeconds] = useState(TEST_WALK_BUFFER_SECONDS);
-  const [missedAlert, setMissedAlert] = useState<string | null>(null);
 
   const endTimeRef = useRef<number | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -69,29 +68,11 @@ const ParkingMeterTracker = () => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && isActive) {
         requestWakeLock();
-        if (endTimeRef.current !== null) {
-          const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
-          if (remaining === 0) {
-            setIsActive(false);
-            setHasEnded(true);
-            setShowFindCar(true);
-            setMissedAlert('Your meter expired while you were away!');
-            if ('vibrate' in navigator) navigator.vibrate([300, 100, 300, 100, 300]);
-          } else if (remaining <= 300) {
-            setShowFindCar(true);
-            setMissedAlert('Under 5 minutes left — head back now!');
-            if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
-          } else if (remaining <= walkBackSeconds) {
-            setShowFindCar(true);
-            setMissedAlert('Time to start walking back to your car!');
-            if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
-          }
-        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isActive, walkBackSeconds]);
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -172,7 +153,6 @@ const ParkingMeterTracker = () => {
     setIsActive(true);
     setHasEnded(false);
     setShowFindCar(false);
-    setMissedAlert(null);
     setWalkBackSeconds(TEST_WALK_BUFFER_SECONDS);
     if (lastPinnedRef.current) setPinnedCoords(lastPinnedRef.current);
     requestWakeLock();
@@ -185,7 +165,7 @@ const ParkingMeterTracker = () => {
           lastPinnedRef.current = pinned;
           startWatchingPosition(pinned);
         },
-        (e) => { console.error('GPS error:', e); alert('GPS Error: ' + e.code + ' - ' + e.message); },
+        (e) => console.error('GPS error:', e),
         { enableHighAccuracy: true }
       );
     }
@@ -196,7 +176,6 @@ const ParkingMeterTracker = () => {
     setShowExitWarning(false);
     setTimeLeft(0);
     setShowFindCar(false);
-    setMissedAlert(null);
     endTimeRef.current = null;
     hasEndedRef.current = false;
     releaseWakeLock();
@@ -220,6 +199,8 @@ const ParkingMeterTracker = () => {
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen bg-[#0f172a] p-6 text-white overflow-hidden">
+
+      {/* EXIT WARNING OVERLAY */}
       {showExitWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
           <div className="w-full max-w-xs bg-slate-900 border-2 border-red-500/50 rounded-[2.5rem] p-8 text-center shadow-[0_0_40px_rgba(239,68,68,0.2)]">
@@ -240,17 +221,14 @@ const ParkingMeterTracker = () => {
         </div>
       )}
 
-      <img src="/bounce-logo-wht.png" alt="Bounce" className="h-[50px] mb-10" />
+      {/* LOGO + SUBHEAD */}
+      <img src="/bounce-logo-wht.png" alt="Bounce" className="h-[50px] mb-2" />
+      <p className="text-slate-400 text-xs uppercase tracking-[0.3em] font-bold mb-8">Parking Meter Timer</p>
 
+      {/* MAIN CARD */}
       <div className="w-full max-w-sm bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl border border-slate-700">
-        {missedAlert && (
-          <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-3">
-            <BellRing size={20} className="text-amber-400 shrink-0" />
-            <p className="text-amber-300 text-sm font-bold">{missedAlert}</p>
-            <button onClick={() => setMissedAlert(null)} className="ml-auto text-amber-500 text-lg leading-none">x</button>
-          </div>
-        )}
 
+        {/* DISPLAY */}
         <div className="py-8 mb-8 text-center overflow-hidden">
           <div
             className={`text-7xl font-digital tracking-widest leading-none ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}
@@ -258,7 +236,7 @@ const ParkingMeterTracker = () => {
           >
             {formatTime(timeLeft)}
           </div>
-        <div className="flex items-center justify-center gap-2 mt-6 text-slate-500 uppercase text-[10px] font-bold tracking-[0.4em]">
+          <div className="flex items-center justify-center gap-2 mt-6 text-slate-500 uppercase text-[10px] font-bold tracking-[0.4em]">
             <Clock size={12} className={isActive ? 'animate-spin-slow' : ''} />
             <span>{isActive ? 'Tracking Active' : hasEnded ? 'Time Expired' : 'Ready to Pin'}</span>
           </div>
@@ -289,7 +267,7 @@ const ParkingMeterTracker = () => {
             {showFindCar && pinnedCoords && (
               <button onClick={handleFindCar} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-3">
                 <MapPin size={24} />
-                TIME TO HEAD BACK
+                {hasEnded ? 'FIND MY CAR' : 'TIME TO HEAD BACK'}
               </button>
             )}
             <button onClick={() => setShowExitWarning(true)} className="w-full py-5 bg-slate-900 text-red-500 border border-red-900/20 rounded-2xl font-black text-xl hover:bg-red-950/20 transition-all">
@@ -310,6 +288,11 @@ const ParkingMeterTracker = () => {
           </div>
         )}
       </div>
+
+      {/* FOOTER NOTE */}
+      <p className="mt-8 text-center text-slate-600 text-[10px] uppercase tracking-widest leading-relaxed max-w-xs">
+        For optimal use, keep app open and screen active while meter is running
+      </p>
     </div>
   );
 };

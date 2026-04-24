@@ -2,7 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Minus, Navigation, Clock, AlertTriangle, MapPin } from 'lucide-react';
 
 const WALK_SPEED_MPS = 1.4;
-const TEST_WALK_BUFFER_SECONDS = 120;
+const DRIVE_SPEED_MPS = 11.2;
+const WALK_THRESHOLD_METERS = 800;
+const WALK_BUFFER_SECONDS = 180;
+const DRIVE_BUFFER_SECONDS = 300;
 
 function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -30,7 +33,7 @@ const ParkingMeterTracker = () => {
   const [showExitWarning, setShowExitWarning] = useState(false);
   const [hasEnded, setHasEnded] = useState(false);
   const [showFindCar, setShowFindCar] = useState(false);
-  const [walkBackSeconds, setWalkBackSeconds] = useState(TEST_WALK_BUFFER_SECONDS);
+  const [walkBackSeconds, setWalkBackSeconds] = useState(WALK_BUFFER_SECONDS);
 
   const endTimeRef = useRef<number | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -126,8 +129,10 @@ const ParkingMeterTracker = () => {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const dist = getDistanceMeters(pinned.lat, pinned.lng, pos.coords.latitude, pos.coords.longitude);
-        const rawSeconds = Math.ceil(dist / WALK_SPEED_MPS);
-        setWalkBackSeconds(Math.max(rawSeconds, TEST_WALK_BUFFER_SECONDS));
+        const speed = dist > WALK_THRESHOLD_METERS ? DRIVE_SPEED_MPS : WALK_SPEED_MPS;
+        const buffer = dist > WALK_THRESHOLD_METERS ? DRIVE_BUFFER_SECONDS : WALK_BUFFER_SECONDS;
+        const rawSeconds = Math.ceil(dist / speed) + buffer;
+        setWalkBackSeconds(rawSeconds);
       },
       (err) => console.warn('GPS watch error:', err),
       { enableHighAccuracy: true }
@@ -154,7 +159,7 @@ const ParkingMeterTracker = () => {
     setIsActive(true);
     setHasEnded(false);
     setShowFindCar(false);
-    setWalkBackSeconds(TEST_WALK_BUFFER_SECONDS);
+    setWalkBackSeconds(WALK_BUFFER_SECONDS);
     if (lastPinnedRef.current) setPinnedCoords(lastPinnedRef.current);
     requestWakeLock();
     postToSW({ type: 'SCHEDULE_NOTIFICATION', payload: { endMs } });

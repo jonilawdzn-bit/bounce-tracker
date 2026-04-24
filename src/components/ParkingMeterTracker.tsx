@@ -223,7 +223,7 @@ const ParkingMeterTracker = () => {
 
       {/* LOGO + SUBHEAD */}
       <img src="/bounce-logo-wht.png" alt="Bounce" className="h-[50px] mb-2" />
-      <p className="text-slate-400 text-xs uppercase tracking-[0.3em] font-bold mb-8">Parking Meter Timer</p>
+      <p className="text-slate-400 text-xs tracking-[0.3em] font-bold mb-8">Parking Meter Timer</p>
 
       {/* MAIN CARD */}
       <div className="w-full max-w-sm bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl border border-slate-700">
@@ -290,7 +290,7 @@ const ParkingMeterTracker = () => {
       </div>
 
       {/* FOOTER NOTE */}
-      <p className="mt-8 text-center text-slate-600 text-[10px] uppercase tracking-widest leading-relaxed max-w-xs">
+      <p className="mt-8 text-center text-white text-[10px] tracking-widest leading-relaxed max-w-xs">
         For optimal use, keep app open and screen active while meter is running
       </p>
     </div>

@@ -25,6 +25,26 @@ function postToSW(msg: object) {
   }
 }
 
+function DigitalClock({ seconds }: { seconds: number }) {
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const ss = String(seconds % 60).padStart(2, '0');
+  return (
+    <span className="inline-flex items-baseline justify-center">
+      {mm.split('').map((d, i) => (
+        <span key={`m-${i}`} className="digital-digit">
+          {d}
+        </span>
+      ))}
+      <span className="digital-colon">:</span>
+      {ss.split('').map((d, i) => (
+        <span key={`s-${i}`} className="digital-digit">
+          {d}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 const ParkingMeterTracker = () => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isActive, setIsActive] = useState(false);
@@ -189,12 +209,6 @@ const ParkingMeterTracker = () => {
     postToSW({ type: 'CANCEL_NOTIFICATIONS' });
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const handleFindCar = () => {
     if (pinnedCoords) {
       window.open(`https://www.google.com/maps/search/?api=1&query=${pinnedCoords.lat},${pinnedCoords.lng}`, '_blank');
@@ -237,10 +251,10 @@ const ParkingMeterTracker = () => {
         {/* DISPLAY */}
         <div className="py-8 mb-8 text-center overflow-hidden">
           <div
-            className={`text-8xl font-digital tracking-widest leading-none ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}
+            className={`text-8xl font-digital leading-none tracking-normal ${isUrgent ? 'text-red-500 animate-pulse' : hasEnded ? 'text-red-500' : 'text-emerald-400'}`}
             style={{ textShadow: '0 0 12px currentColor' }}
           >
-            {formatTime(timeLeft)}
+            <DigitalClock seconds={timeLeft} />
           </div>
           <div className="flex items-center justify-center gap-2 mt-6 text-slate-500 uppercase text-[10px] font-bold tracking-[0.4em]">
             <Clock size={12} className={isActive ? 'animate-spin-slow' : ''} />

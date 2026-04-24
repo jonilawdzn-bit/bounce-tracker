@@ -16,6 +16,23 @@ body {
 
 .font-digital {
   font-family: 'Technology', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Fixed-width digit cells — Technology often lacks true tabular figures */
+.digital-digit {
+  display: inline-block;
+  text-align: center;
+  width: 0.62em;
+  min-width: 0.62em;
+}
+
+.digital-colon {
+  display: inline-block;
+  text-align: center;
+  width: 0.34em;
+  min-width: 0.34em;
 }
 
 .text-emerald-400 {
